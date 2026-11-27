@@ -1,4 +1,4 @@
-"""Functional PyQt6 UI tests verifying every widget and handler in src/ui.py."""
+"""Functional PyQt6 UI tests verifying general direct prediction and optional live tools."""
 
 import os
 import sys
@@ -18,23 +18,23 @@ class TestWeatherAppUI(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication(sys.argv)
 
     def setUp(self) -> None:
-        # Prevent automatic live HTTP calls during unit test startup
-        with patch.object(WeatherApp, "fetch_selected_city_forecast", return_value=None):
-            self.win = WeatherApp()
+        self.win = WeatherApp()
 
     def tearDown(self) -> None:
         self.win.close()
 
-    def test_initial_state_and_model_loaded(self) -> None:
+    def test_initial_direct_prediction_runs_without_city_selection(self) -> None:
         self.assertIsNotNone(self.win.model)
-        self.assertEqual(self.win.city_combo.count(), 81)
-        self.assertEqual(self.win.city_combo.currentText(), "İstanbul")
+        self.assertTrue(self.win.prob_big_label.text().endswith("%"))
         self.assertIn("Ensemble", self.win.model_meta_lbl.text())
         self.assertIn("15,344", self.win.model_meta_lbl.text())
+        # Derived physics indicators populated immediately on startup
+        self.assertNotEqual(self.win.metric_labels["dew_point"].text(), "—")
+        self.assertNotEqual(self.win.metric_labels["storm_index"].text(), "—")
 
-    def test_presets_update_verdict_badge_and_bar(self) -> None:
-        # Clear Day
-        self.win._apply_preset((27.5, 16.0, 2.8, 12.0, 44.0, 1021.0, 7.2))
+    def test_presets_update_verdict_badge_bar_and_physics_tiles(self) -> None:
+        # Clear Sky
+        self.win._apply_preset((27.5, 16.0, 2.5, 10.0, 42.0, 1021.0, 7.2))
         self.assertEqual(self.win.verdict_label.text(), "No Rain Expected")
         self.assertEqual(self.win.weather_badge.state, "sunny")
         self.assertLess(self.win.prob_bar.value(), 25)
@@ -44,6 +44,7 @@ class TestWeatherAppUI(unittest.TestCase):
         self.assertEqual(self.win.verdict_label.text(), "Rain Expected")
         self.assertEqual(self.win.weather_badge.state, "rainy")
         self.assertGreater(self.win.prob_bar.value(), 70)
+        self.assertIn("hPa", self.win.metric_labels["pressure_dev"].text())
 
     def test_inverted_min_max_temperature_handled_safely(self) -> None:
         self.win.spinboxes["Max_Temperature"].setValue(8.0)
@@ -53,11 +54,11 @@ class TestWeatherAppUI(unittest.TestCase):
         self.assertEqual(self.win.spinboxes["Min_Temperature"].value(), 8.0)
         self.assertTrue(self.win.prob_big_label.text().endswith("%"))
 
-    def test_forecast_loaded_populates_tiles_and_autofills(self) -> None:
+    def test_optional_global_autofill_populates_inputs_and_ignores_stale(self) -> None:
         sample = {
-            "city": "Ankara",
-            "lat": 39.9334,
-            "lon": 32.8597,
+            "city": "London, GB",
+            "lat": 51.5074,
+            "lon": -0.1278,
             "updated_at": "12:00",
             "current": {
                 "temp": 14.0,
@@ -87,39 +88,25 @@ class TestWeatherAppUI(unittest.TestCase):
                 "emoji": "🌧️",
                 "is_rainy": True,
             },
-            "week": [
-                {
-                    "date": f"2026-11-{27 + i:02d}",
-                    "label": f"Day {i + 1}",
-                    "max_temp": 12.0 + i,
-                    "min_temp": 5.0 + i,
-                    "precip_mm": 0.0,
-                    "precip_prob": 20 * i,
-                    "condition": "Cloudy",
-                    "emoji": "☁️",
-                }
-                for i in range(5)
-            ],
+            "week": [],
         }
-        self.win._expected_city = "Ankara"
-        self.win._handle_forecast_result(sample, auto_fill=True, req_city="Ankara")
+        self.win._expected_city = "London"
+        self.win._handle_forecast_result(sample, auto_fill=True, req_city="London")
 
-        self.assertIn("Ankara", self.win.fc_city_title.text())
-        self.assertEqual(self.win.metric_labels["temp_range"].text(), "4.0° / 11.5°C")
-        self.assertEqual(self.win.metric_labels["precip"].text(), "6.4 mm (85%)")
+        self.assertIn("London, GB", self.win.live_status_lbl.text())
         self.assertEqual(self.win.spinboxes["CloudCover"].value(), 92.0)
         self.assertEqual(self.win.verdict_label.text(), "Rain Expected")
 
         # Stale response for a different city should be ignored
-        stale = dict(sample, city="İzmir")
-        self.win._handle_forecast_result(stale, auto_fill=False, req_city="İzmir")
-        self.assertIn("Ankara", self.win.fc_city_title.text())
+        stale = dict(sample, city="Tokyo, JP")
+        self.win._handle_forecast_result(stale, auto_fill=False, req_city="Tokyo")
+        self.assertIn("London, GB", self.win.live_status_lbl.text())
 
     def test_offline_forecast_error_graceful(self) -> None:
-        self.win._expected_city = "İstanbul"
-        self.win._handle_forecast_error("DNS failure", req_city="İstanbul")
+        self.win._expected_city = "Berlin"
+        self.win._handle_forecast_error("DNS failure", req_city="Berlin")
         self.assertTrue(self.win.sync_btn.isEnabled())
-        self.assertIn("Offline mode", self.win.fc_current_sub.text())
+        self.assertIn("Direct prediction still works", self.win.live_status_lbl.text())
 
     def test_page_navigation_and_map_controls(self) -> None:
         with patch.object(self.win.map_page, "ensure_loaded", return_value=None):
@@ -147,7 +134,6 @@ class TestWeatherAppUI(unittest.TestCase):
         self.assertIn("Ardahan", self.win.map_page.stat_coldest.findChild(type(self.win.verdict_label), "pill_value").text())
         self.assertEqual(self.win.map_page.stat_rainy.findChild(type(self.win.verdict_label), "pill_value").text(), "1 / 2")
 
-        # Filter & theme toggles
         self.win.map_page._on_filter_changed(1)
         self.assertEqual(self.win.map_page.filter_mode, "rainy")
         self.win.map_page._toggle_map_theme()

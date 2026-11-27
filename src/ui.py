@@ -876,9 +876,9 @@ class TurkeyMapPage(QWidget):
 class WeatherApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RainCast AI — Rain Prediction & Turkey Weather Radar")
-        self.resize(1180, 760)
-        self.setMinimumSize(980, 660)
+        self.setWindowTitle("Rain Prediction — Machine Learning Forecast")
+        self.resize(1220, 750)
+        self.setMinimumSize(1040, 660)
         self.setStyleSheet(STYLESHEET)
 
         self.model: Any = None
@@ -889,13 +889,13 @@ class WeatherApp(QWidget):
         self.latest_forecast: dict[str, Any] | None = None
         self.forecast_worker: CityForecastWorker | None = None
         self._retired_workers: list[QThread] = []
-        self._expected_city: str = "İstanbul"
+        self._expected_city: str = ""
 
         self._load_model()
         self._build_ui()
 
-        # Automatically fetch initial weather for İstanbul on startup (non-blocking!)
-        self.fetch_selected_city_forecast(auto_fill=True)
+        # Run an immediate general prediction on default atmospheric values (no city required!)
+        self.predict_manual()
 
     # ---- Model Loading ----
     def _load_model(self) -> None:
@@ -941,9 +941,9 @@ class WeatherApp(QWidget):
         # Brand
         brand_box = QVBoxLayout()
         brand_box.setSpacing(0)
-        title = QLabel("🌧️  RainCast AI")
+        title = QLabel("🌧️  Rain Prediction ML")
         title.setObjectName("AppTitle")
-        sub = QLabel("Random Forest Rain Predictor · Live 81-Province Radar")
+        sub = QLabel("General Atmospheric Rain Probability Model · 5-Model Ensemble")
         sub.setObjectName("AppSubtitle")
         brand_box.addWidget(title)
         brand_box.addWidget(sub)
@@ -958,12 +958,12 @@ class WeatherApp(QWidget):
         nav_lay.setContentsMargins(4, 4, 4, 4)
         nav_lay.setSpacing(4)
 
-        self.nav_pred_btn = QPushButton("☁️  Rain Predictor")
+        self.nav_pred_btn = QPushButton("⚡  Rain Predictor")
         self.nav_pred_btn.setObjectName("NavBtn")
         self.nav_pred_btn.setProperty("active", True)
         self.nav_pred_btn.clicked.connect(lambda: self._switch_page(0))
 
-        self.nav_map_btn = QPushButton("🗺️  Turkey Weather Map")
+        self.nav_map_btn = QPushButton("🗺️  Live Weather Map")
         self.nav_map_btn.setObjectName("NavBtn")
         self.nav_map_btn.setProperty("active", False)
         self.nav_map_btn.clicked.connect(lambda: self._switch_page(1))
@@ -971,27 +971,6 @@ class WeatherApp(QWidget):
         nav_lay.addWidget(self.nav_pred_btn)
         nav_lay.addWidget(self.nav_map_btn)
         lay.addWidget(nav_frame)
-
-        lay.addStretch()
-
-        # City Selector + Sync Button
-        city_lbl = QLabel("City:")
-        city_lbl.setObjectName("FieldLabel")
-        lay.addWidget(city_lbl)
-
-        self.city_combo = QComboBox()
-        self.city_combo.setEditable(True)
-        self.city_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.city_combo.addItems(sorted(TURKEY_CITIES.keys()))
-        self.city_combo.setCurrentText("İstanbul")
-        self.city_combo.setFixedWidth(165)
-        self.city_combo.currentTextChanged.connect(self._on_city_changed)
-        lay.addWidget(self.city_combo)
-
-        self.sync_btn = QPushButton("↻ Sync Forecast")
-        self.sync_btn.setObjectName("SecondaryBtn")
-        self.sync_btn.clicked.connect(lambda: self.fetch_selected_city_forecast(auto_fill=True))
-        lay.addWidget(self.sync_btn)
 
         return bar
 
@@ -1031,8 +1010,8 @@ class WeatherApp(QWidget):
         preset_row.setSpacing(8)
 
         presets = [
-            ("☀️ Clear Day", (27.5, 16.0, 2.8, 12.0, 44.0, 1021.0, 7.2)),
-            ("⛅ Mild / Cloudy", (21.0, 12.5, 3.2, 52.0, 62.0, 1015.5, 5.2)),
+            ("☀️ Clear Sky", (27.5, 16.0, 2.5, 10.0, 42.0, 1021.0, 7.2)),
+            ("⛅ Partly Cloudy", (19.5, 12.0, 3.8, 58.0, 68.0, 1013.5, 4.2)),
             ("🌧️ Storm Front", (12.0, 7.5, 7.6, 94.0, 88.0, 1001.5, 1.4)),
         ]
         for label, vals in presets:
@@ -1040,12 +1019,6 @@ class WeatherApp(QWidget):
             btn.setObjectName("PresetBtn")
             btn.clicked.connect(lambda checked=False, v=vals: self._apply_preset(v))
             preset_row.addWidget(btn)
-
-        fill_btn = QPushButton("📡 Tomorrow")
-        fill_btn.setObjectName("PresetBtn")
-        fill_btn.setToolTip("Fill inputs using live tomorrow forecast for the selected city")
-        fill_btn.clicked.connect(lambda: self.fetch_selected_city_forecast(auto_fill=True))
-        preset_row.addWidget(fill_btn)
         left_lay.addLayout(preset_row)
 
         # 2-Column SpinBox Grid
@@ -1105,7 +1078,7 @@ class WeatherApp(QWidget):
             auc = self.model_metrics.get("roc_auc", 0)
             total = self.model_metrics.get("total_samples", 0)
             meta_txt = (
-                f"Model: {self.model_name} · Accuracy {acc:.1f}% · ROC-AUC {auc:.2f} · {total:,} daily records"
+                f"Ensemble (5 models) · Acc {acc:.1f}% · ROC-AUC {auc:.2f} · {total:,} records"
             )
         elif self.model is not None:
             meta_txt = f"Model: {self.model_name} loaded"
@@ -1114,6 +1087,7 @@ class WeatherApp(QWidget):
 
         self.model_meta_lbl = QLabel(meta_txt)
         self.model_meta_lbl.setObjectName("MutedText")
+        self.model_meta_lbl.setWordWrap(True)
         self.model_meta_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         left_lay.addWidget(self.model_meta_lbl)
 
@@ -1170,7 +1144,7 @@ class WeatherApp(QWidget):
 
         right_col.addWidget(hero_card)
 
-        # Tomorrow's Live Forecast Card
+        # Atmospheric Physics & Optional Global Auto-Fill Card
         forecast_card = QFrame()
         forecast_card.setObjectName("Card")
         fc_lay = QVBoxLayout(forecast_card)
@@ -1180,32 +1154,32 @@ class WeatherApp(QWidget):
         fc_header = QHBoxLayout()
         fc_title_col = QVBoxLayout()
         fc_title_col.setSpacing(2)
-        self.fc_city_title = QLabel("İstanbul — Tomorrow's Outlook")
+        self.fc_city_title = QLabel("Derived Atmospheric Indicators")
         self.fc_city_title.setObjectName("SectionTitle")
-        self.fc_current_sub = QLabel("Fetching live meteorological data from Open-Meteo...")
+        self.fc_current_sub = QLabel("Computed in real time from your parameters (any location)")
         self.fc_current_sub.setObjectName("MutedText")
+        self.fc_current_sub.setWordWrap(True)
         fc_title_col.addWidget(self.fc_city_title)
         fc_title_col.addWidget(self.fc_current_sub)
-        fc_header.addLayout(fc_title_col)
-        fc_header.addStretch()
+        fc_header.addLayout(fc_title_col, stretch=1)
 
-        self.email_btn = QPushButton("✉️ Email Alert")
+        self.email_btn = QPushButton("✉️ Email")
         self.email_btn.setObjectName("SecondaryBtn")
         self.email_btn.clicked.connect(self._open_email_dialog)
         fc_header.addWidget(self.email_btn)
         fc_lay.addLayout(fc_header)
 
-        # 6 Metric Tiles (3x2)
+        # 6 Derived Physics Metric Tiles (3x2) — live for ANY manual inputs
         metrics_grid = QGridLayout()
         metrics_grid.setSpacing(10)
         self.metric_labels: dict[str, QLabel] = {}
         tile_defs = [
-            ("temp_range", "🌡️ Temp Range"),
-            ("precip", "🌧️ Expected Rain"),
-            ("humidity", "💧 Avg Humidity"),
-            ("clouds", "☁️ Cloud Cover"),
-            ("pressure", "🧭 Pressure"),
-            ("wind_uv", "💨 Wind · UV"),
+            ("temp_stats", "🌡️ Mean Temp · ΔT"),
+            ("dew_point", "💧 Dew Point"),
+            ("dew_spread", "🌫️ Dew Spread"),
+            ("cloud_hum", "☁️ Cloud × Humidity"),
+            ("pressure_dev", "🧭 Pressure Anomaly"),
+            ("storm_index", "⛈️ Storm Index"),
         ]
         for idx, (key, label) in enumerate(tile_defs):
             tile = QFrame()
@@ -1229,46 +1203,29 @@ class WeatherApp(QWidget):
         divider.setStyleSheet("background-color: #1E2D4A; max-height: 1px; border: none; margin: 4px 0;")
         fc_lay.addWidget(divider)
 
-        # 5-Day Mini Forecast Strip
-        strip_lbl = QLabel("5-Day Forecast")
-        strip_lbl.setObjectName("FieldLabel")
-        fc_lay.addWidget(strip_lbl)
+        # Optional Global City Auto-Fill Bar
+        opt_lbl = QLabel("Optional: Auto-Fill Parameters from Live Forecast (Any City Worldwide)")
+        opt_lbl.setObjectName("FieldLabel")
+        fc_lay.addWidget(opt_lbl)
 
-        self.week_row = QHBoxLayout()
-        self.week_row.setSpacing(8)
-        self.day_cards: list[tuple[QLabel, QLabel, QLabel, QLabel]] = []
-        for _ in range(5):
-            card = QFrame()
-            card.setObjectName("DayCard")
-            d_lay = QVBoxLayout(card)
-            d_lay.setContentsMargins(8, 10, 8, 10)
-            d_lay.setSpacing(4)
-            d_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lookup_row = QHBoxLayout()
+        lookup_row.setSpacing(10)
+        self.city_input = QLineEdit()
+        self.city_input.setPlaceholderText("e.g. London, Tokyo, New York, Berlin, Istanbul...")
+        self.city_input.returnPressed.connect(lambda: self.fetch_selected_city_forecast(auto_fill=True))
+        lookup_row.addWidget(self.city_input, stretch=1)
 
-            d_name = QLabel("—")
-            d_name.setObjectName("MutedText")
-            d_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sync_btn = QPushButton("🌍 Auto-Fill")
+        self.sync_btn.setObjectName("SecondaryBtn")
+        self.sync_btn.clicked.connect(lambda: self.fetch_selected_city_forecast(auto_fill=True))
+        lookup_row.addWidget(self.sync_btn)
+        fc_lay.addLayout(lookup_row)
 
-            d_icon = QLabel("⛅")
-            d_icon.setStyleSheet("font-size: 20px;")
-            d_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.live_status_lbl = QLabel("Direct mode active — enter any atmospheric values on the left and click Predict.")
+        self.live_status_lbl.setObjectName("MutedText")
+        self.live_status_lbl.setWordWrap(True)
+        fc_lay.addWidget(self.live_status_lbl)
 
-            d_temp = QLabel("—° / —°")
-            d_temp.setStyleSheet("font-size: 12px; font-weight: 700; color: #F8FAFC;")
-            d_temp.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            d_rain = QLabel("💧 —%")
-            d_rain.setStyleSheet("font-size: 11px; color: #38BDF8;")
-            d_rain.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            d_lay.addWidget(d_name)
-            d_lay.addWidget(d_icon)
-            d_lay.addWidget(d_temp)
-            d_lay.addWidget(d_rain)
-            self.week_row.addWidget(card)
-            self.day_cards.append((d_name, d_icon, d_temp, d_rain))
-
-        fc_lay.addLayout(self.week_row)
         right_col.addWidget(forecast_card, stretch=1)
 
         main_lay.addWidget(input_card, stretch=45)
@@ -1288,11 +1245,6 @@ class WeatherApp(QWidget):
 
         if index == 1:
             self.map_page.ensure_loaded()
-
-    def _on_city_changed(self, city_name: str) -> None:
-        resolved = resolve_city_name(city_name, default="")
-        if resolved and resolved != self._expected_city:
-            self.fetch_selected_city_forecast(auto_fill=True, city_override=resolved)
 
     # ---- Presets & Prediction ----
     def _apply_preset(self, values: tuple[float, ...]) -> None:
@@ -1392,6 +1344,21 @@ class WeatherApp(QWidget):
                 "background-color: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #059669, stop:1 #34D399); }"
             )
 
+        # Update real-time derived atmospheric physics tiles
+        mean_t = float(engineered_df["Temp_Mean"].iloc[0])
+        dew_pt = float(engineered_df["Dew_Point"].iloc[0])
+        dew_sp = float(engineered_df["Dew_Spread"].iloc[0])
+        cloud_hum = float(engineered_df["Cloud_Humidity"].iloc[0])
+        press_dev = float(engineered_df["Pressure_Dev"].iloc[0])
+        storm_idx = float(engineered_df["Storm_Index"].iloc[0])
+
+        self.metric_labels["temp_stats"].setText(f"{mean_t:.1f}°C · Δ{temp_diff:.1f}°C")
+        self.metric_labels["dew_point"].setText(f"{dew_pt:.1f} °C")
+        self.metric_labels["dew_spread"].setText(f"{dew_sp:.1f} °C")
+        self.metric_labels["cloud_hum"].setText(f"{cloud_hum:.1f}%")
+        self.metric_labels["pressure_dev"].setText(f"{press_dev:+.1f} hPa")
+        self.metric_labels["storm_index"].setText(f"{storm_idx:.1f}")
+
         # Meteorological explanation
         drivers = []
         if cloud >= 70:
@@ -1416,32 +1383,33 @@ class WeatherApp(QWidget):
                 f"Balanced atmospheric profile (ΔT {temp_diff:.1f}°C, {MONTH_NAMES[month - 1]})."
             )
 
-    # ---- Live Forecast Fetching ----
+    # ---- Optional Live Forecast Auto-Fill (Any City Worldwide) ----
     def fetch_selected_city_forecast(
         self, auto_fill: bool = False, city_override: str | None = None
     ) -> None:
-        raw_city = city_override if city_override is not None else self.city_combo.currentText()
-        city = resolve_city_name(raw_city, default="İstanbul")
-        self._expected_city = city
+        query = (city_override if city_override is not None else self.city_input.text()).strip()
+        if not query:
+            self.live_status_lbl.setText("Enter any city name (e.g. London, Tokyo, Istanbul) to auto-fill live values.")
+            return
+
+        self._expected_city = query
 
         if self.forecast_worker is not None and self.forecast_worker.isRunning():
-            # Keep previous worker alive until it finishes so Qt never destroys a running QThread
             prev = self.forecast_worker
             self._retired_workers.append(prev)
             prev.finished.connect(lambda _d=None, w=prev: self._cleanup_retired_worker(w))
             prev.failed.connect(lambda _e=None, w=prev: self._cleanup_retired_worker(w))
 
         self.sync_btn.setEnabled(False)
-        self.sync_btn.setText("Syncing...")
-        self.fc_city_title.setText(f"{city} — Tomorrow's Outlook")
-        self.fc_current_sub.setText("Fetching live forecast from Open-Meteo...")
+        self.sync_btn.setText("Loading...")
+        self.live_status_lbl.setText(f"Fetching tomorrow's live parameters for '{query}'...")
 
-        worker = CityForecastWorker(city)
+        worker = CityForecastWorker(query)
         worker.finished.connect(
-            lambda data, fill=auto_fill, req_city=city: self._handle_forecast_result(data, fill, req_city)
+            lambda data, fill=auto_fill, req_city=query: self._handle_forecast_result(data, fill, req_city)
         )
         worker.failed.connect(
-            lambda err, req_city=city: self._handle_forecast_error(err, req_city)
+            lambda err, req_city=query: self._handle_forecast_error(err, req_city)
         )
         self.forecast_worker = worker
         worker.start()
@@ -1478,29 +1446,14 @@ class WeatherApp(QWidget):
     def _on_forecast_loaded(self, data: dict[str, Any], auto_fill: bool) -> None:
         self.latest_forecast = data
         self.sync_btn.setEnabled(True)
-        self.sync_btn.setText("↻ Sync Forecast")
+        self.sync_btn.setText("🌍 Auto-Fill")
 
         curr = data["current"]
         tmrw = data["tomorrow"]
-
-        self.fc_city_title.setText(f"{data['city']} — Tomorrow ({tmrw['date']})")
-        self.fc_current_sub.setText(
-            f"Now: {curr['emoji']} {curr['temp']}°C (feels {curr['feels_like']}°C) · "
-            f"{curr['condition']} · Updated {data['updated_at']}"
+        self.live_status_lbl.setText(
+            f"Filled from {data['city']} ({tmrw['date']}): {tmrw['emoji']} {tmrw['condition']} · "
+            f"Now {curr['temp']}°C · Expected precip {tmrw['precip_mm']} mm ({tmrw['precip_prob']}%)"
         )
-
-        self.metric_labels["temp_range"].setText(f"{tmrw['min_temp']}° / {tmrw['max_temp']}°C")
-        self.metric_labels["precip"].setText(f"{tmrw['precip_mm']} mm ({tmrw['precip_prob']}%)")
-        self.metric_labels["humidity"].setText(f"{tmrw['humidity']:.0f}%")
-        self.metric_labels["clouds"].setText(f"{tmrw['cloud_cover']:.0f}%")
-        self.metric_labels["pressure"].setText(f"{tmrw['pressure']:.1f} hPa")
-        self.metric_labels["wind_uv"].setText(f"{tmrw['wind_speed']:.1f} m/s · UV {tmrw['uv_index']:.1f}")
-
-        for (d_name, d_icon, d_temp, d_rain), day in zip(self.day_cards, data["week"]):
-            d_name.setText(day["label"])
-            d_icon.setText(day["emoji"])
-            d_temp.setText(f"{day['max_temp']:.0f}° / {day['min_temp']:.0f}°")
-            d_rain.setText(f"💧 {day['precip_prob']}%")
 
         if auto_fill:
             self.spinboxes["Max_Temperature"].setValue(tmrw["max_temp"])
@@ -1515,35 +1468,40 @@ class WeatherApp(QWidget):
 
     def _on_forecast_failed(self, err: str) -> None:
         self.sync_btn.setEnabled(True)
-        self.sync_btn.setText("↻ Sync Forecast")
-        self.fc_current_sub.setText("Offline mode — live forecast unavailable (manual prediction still works).")
+        self.sync_btn.setText("🌍 Auto-Fill")
+        self.live_status_lbl.setText(f"Could not fetch live data ({err[:70]}). Direct prediction still works.")
         self.predict_manual()
 
     # ---- Email Alert Dialog ----
     def _open_email_dialog(self) -> None:
-        city = self.city_combo.currentText()
-        if self.latest_forecast:
-            tmrw = self.latest_forecast["tomorrow"]
-            subject = f"RainCast AI — {city} Forecast for {tmrw['date']}"
-            body = (
-                f"RainCast AI Weather Summary — {city} ({tmrw['date']})\n"
-                f"{'=' * 46}\n"
-                f"Condition      : {tmrw['condition']}\n"
-                f"Temperature    : {tmrw['min_temp']} °C – {tmrw['max_temp']} °C\n"
-                f"Precipitation  : {tmrw['precip_mm']} mm (chance {tmrw['precip_prob']}%)\n"
-                f"Humidity       : {tmrw['humidity']}%\n"
-                f"Cloud Cover    : {tmrw['cloud_cover']}%\n"
-                f"Surface Press. : {tmrw['pressure']} hPa\n"
-                f"Wind Speed     : {tmrw['wind_speed']} m/s\n"
-                f"Max UV Index   : {tmrw['uv_index']}\n\n"
-                f"ML Prediction  : {self.verdict_label.text()} ({self.prob_big_label.text()})\n"
-            )
-        else:
-            subject = f"RainCast AI — {city} Manual Prediction"
-            body = (
-                f"ML Prediction: {self.verdict_label.text()} ({self.prob_big_label.text()})\n"
-                f"{self.insight_label.text()}\n"
-            )
+        max_t = self.spinboxes["Max_Temperature"].value()
+        min_t = self.spinboxes["Min_Temperature"].value()
+        wind = self.spinboxes["WindSpeed"].value()
+        cloud = self.spinboxes["CloudCover"].value()
+        humidity = self.spinboxes["Humidity"].value()
+        pressure = self.spinboxes["Pressure"].value()
+        uvi = self.spinboxes["Uvi"].value()
+        month = self.month_combo.currentText()
+
+        location_line = (
+            f"Reference City : {self.latest_forecast['city']} ({self.latest_forecast['tomorrow']['date']})\n"
+            if self.latest_forecast
+            else "Mode           : General Direct Atmospheric Prediction\n"
+        )
+        subject = f"Rain Prediction Summary — {self.verdict_label.text()} ({self.prob_big_label.text()})"
+        body = (
+            f"Rain Prediction ML Summary\n"
+            f"{'=' * 44}\n"
+            f"{location_line}"
+            f"Prediction     : {self.verdict_label.text()} ({self.prob_big_label.text()})\n"
+            f"Temperature    : {min_t:.1f} °C – {max_t:.1f} °C\n"
+            f"Wind Speed     : {wind:.1f} m/s\n"
+            f"Cloud Cover    : {cloud:.0f}%\n"
+            f"Humidity       : {humidity:.0f}%\n"
+            f"Pressure (MSL) : {pressure:.1f} hPa\n"
+            f"Max UV Index   : {uvi:.1f} ({month})\n\n"
+            f"{self.insight_label.text()}\n"
+        )
 
         dialog = EmailAlertDialog(subject, body, parent=self)
         dialog.exec()

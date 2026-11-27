@@ -73,7 +73,7 @@ class TestWeatherAPI(unittest.TestCase):
         mock_get.return_value = mock_resp
 
         result = fetch_city_forecast("izmir")
-        self.assertEqual(result["city"], "İzmir")
+        self.assertEqual(result["city"], "İzmir, TR")
         self.assertEqual(result["tomorrow"]["date"], "2026-11-28")
         self.assertEqual(result["tomorrow"]["month"], 11)
         self.assertEqual(result["tomorrow"]["cloud_cover"], 90.0)

@@ -125,6 +125,7 @@ WMO_CODES: dict[int, tuple[str, str, bool]] = {
 }
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 _TURKISH_ASCII_MAP = str.maketrans("çğıİöşüÇĞÖŞÜ", "cgiiosucgosu")
 
@@ -153,15 +154,42 @@ def decode_wmo(code: int | None) -> tuple[str, str, bool]:
     return WMO_CODES.get(int(code), ("Cloudy", "☁️", False))
 
 
+def geocode_city(query: str, timeout: int = 10) -> tuple[str, float, float]:
+    """Resolve any city name worldwide via Open-Meteo Geocoding API (fallback to local catalog)."""
+    cleaned = query.strip()
+    if not cleaned:
+        raise ValueError("Please enter a city name.")
+
+    local_match = resolve_city_name(cleaned, default="")
+    if local_match:
+        lat, lon = TURKEY_CITIES[local_match]
+        return (f"{local_match}, TR", lat, lon)
+
+    resp = requests.get(
+        OPEN_METEO_GEOCODING_URL,
+        params={"name": cleaned, "count": 1, "language": "en", "format": "json"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results") or []
+    if not results:
+        raise ValueError(f"City not found: {cleaned}")
+
+    top = results[0]
+    name = top.get("name", cleaned)
+    country = top.get("country_code", "")
+    display = f"{name}, {country}" if country else name
+    return (display, float(top["latitude"]), float(top["longitude"]))
+
+
 def fetch_city_forecast(city_name: str, timeout: int = 12) -> dict[str, Any]:
-    """Fetch live current weather and 7-day forecast for a Turkish city via Open-Meteo."""
-    canonical_city = resolve_city_name(city_name)
-    lat, lon = TURKEY_CITIES[canonical_city]
+    """Fetch live current weather and 7-day forecast for any city worldwide via Open-Meteo."""
+    canonical_city, lat, lon = geocode_city(city_name, timeout=timeout)
 
     params = {
         "latitude": lat,
         "longitude": lon,
-        "timezone": "Europe/Istanbul",
+        "timezone": "auto",
         "forecast_days": 7,
         "wind_speed_unit": "ms",
         "current": (
